@@ -143,6 +143,14 @@ class GoogleMapController {
     );
   }
 
+  Future<void> _updateGradientLines(_GradientLineUpdates gradientLineUpdates) async {
+    assert(gradientLineUpdates != null);
+    await channel.invokeMethod<void>(
+      'gradientLines#update',
+      gradientLineUpdates._toMap(),
+    );
+  }
+
   /// Updates circle configuration.
   ///
   /// Change listeners are notified once the update has been made on the

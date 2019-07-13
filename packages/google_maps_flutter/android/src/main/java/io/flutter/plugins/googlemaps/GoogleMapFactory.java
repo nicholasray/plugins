@@ -7,6 +7,8 @@ package io.flutter.plugins.googlemaps;
 import static io.flutter.plugin.common.PluginRegistry.Registrar;
 
 import android.content.Context;
+import android.util.Log;
+
 import com.google.android.gms.maps.model.CameraPosition;
 import io.flutter.plugin.common.StandardMessageCodec;
 import io.flutter.plugin.platform.PlatformView;
@@ -44,6 +46,9 @@ public class GoogleMapFactory extends PlatformViewFactory {
     }
     if (params.containsKey("polylinesToAdd")) {
       builder.setInitialPolylines(params.get("polylinesToAdd"));
+    }
+    if (params.containsKey("gradientLinesToAdd")) {
+      builder.setInitialGradientLines(params.get("gradientLinesToAdd"));
     }
     if (params.containsKey("circlesToAdd")) {
       builder.setInitialCircles(params.get("circlesToAdd"));

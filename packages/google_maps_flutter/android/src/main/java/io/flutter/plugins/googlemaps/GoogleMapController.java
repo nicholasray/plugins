@@ -4,13 +4,6 @@
 
 package io.flutter.plugins.googlemaps;
 
-import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.CREATED;
-import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.DESTROYED;
-import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.PAUSED;
-import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.RESUMED;
-import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.STARTED;
-import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.STOPPED;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -20,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMapOptions;
@@ -33,10 +27,9 @@ import com.google.android.gms.maps.model.MapStyleOptions;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.Polyline;
-import io.flutter.plugin.common.MethodCall;
-import io.flutter.plugin.common.MethodChannel;
-import io.flutter.plugin.common.PluginRegistry;
-import io.flutter.plugin.platform.PlatformView;
+import com.google.android.gms.maps.model.TileOverlay;
+import com.google.android.gms.maps.model.TileOverlayOptions;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,7 +37,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Controller of a single GoogleMaps MapView instance. */
+import io.flutter.plugin.common.MethodCall;
+import io.flutter.plugin.common.MethodChannel;
+import io.flutter.plugin.common.PluginRegistry;
+import io.flutter.plugin.platform.PlatformView;
+
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.CREATED;
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.DESTROYED;
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.PAUSED;
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.RESUMED;
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.STARTED;
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.STOPPED;
+
+/**
+ * Controller of a single GoogleMaps MapView instance.
+ */
 final class GoogleMapController
     implements Application.ActivityLifecycleCallbacks,
         GoogleMap.OnCameraIdleListener,
@@ -83,10 +90,12 @@ final class GoogleMapController
   private final MarkersController markersController;
   private final PolygonsController polygonsController;
   private final PolylinesController polylinesController;
+  private final GradientLinesController gradientLinesController;
   private final CirclesController circlesController;
   private List<Object> initialMarkers;
   private List<Object> initialPolygons;
   private List<Object> initialPolylines;
+  private List<Object> initialGradientLines;
   private List<Object> initialCircles;
 
   GoogleMapController(
@@ -108,6 +117,7 @@ final class GoogleMapController
     this.markersController = new MarkersController(methodChannel);
     this.polygonsController = new PolygonsController(methodChannel);
     this.polylinesController = new PolylinesController(methodChannel, density);
+    this.gradientLinesController = new GradientLinesController(density);
     this.circlesController = new CirclesController(methodChannel);
   }
 
@@ -168,6 +178,7 @@ final class GoogleMapController
 
   @Override
   public void onMapReady(GoogleMap googleMap) {
+    Log.d("onMapReady() thread: ", Thread.currentThread().getName());
     this.googleMap = googleMap;
     this.googleMap.setIndoorEnabled(this.indoorEnabled);
     this.googleMap.setTrafficEnabled(this.trafficEnabled);
@@ -191,11 +202,15 @@ final class GoogleMapController
     polygonsController.setGoogleMap(googleMap);
     polylinesController.setGoogleMap(googleMap);
     circlesController.setGoogleMap(googleMap);
+    TileOverlay tileOverlay = googleMap.addTileOverlay(new TileOverlayOptions().tileProvider(gradientLinesController));
+    gradientLinesController.setTileOverlay(tileOverlay);
     updateInitialMarkers();
     updateInitialPolygons();
     updateInitialPolylines();
+    updateInitialGradientLines();
     updateInitialCircles();
   }
+
 
   @Override
   public void onMethodCall(MethodCall call, MethodChannel.Result result) {
@@ -207,128 +222,122 @@ final class GoogleMapController
         }
         mapReadyResult = result;
         break;
-      case "map#update":
-        {
-          Convert.interpretGoogleMapOptions(call.argument("options"), this);
-          result.success(Convert.cameraPositionToJson(getCameraPosition()));
-          break;
+      case "map#update": {
+        Convert.interpretGoogleMapOptions(call.argument("options"), this);
+        result.success(Convert.cameraPositionToJson(getCameraPosition()));
+        break;
+      }
+      case "map#getVisibleRegion": {
+        if (googleMap != null) {
+          LatLngBounds latLngBounds = googleMap.getProjection().getVisibleRegion().latLngBounds;
+          result.success(Convert.latlngBoundsToJson(latLngBounds));
+        } else {
+          result.error(
+              "GoogleMap uninitialized",
+              "getVisibleRegion called prior to map initialization",
+              null);
         }
-      case "map#getVisibleRegion":
-        {
-          if (googleMap != null) {
-            LatLngBounds latLngBounds = googleMap.getProjection().getVisibleRegion().latLngBounds;
-            result.success(Convert.latlngBoundsToJson(latLngBounds));
-          } else {
-            result.error(
-                "GoogleMap uninitialized",
-                "getVisibleRegion called prior to map initialization",
-                null);
-          }
-          break;
-        }
-      case "camera#move":
-        {
-          final CameraUpdate cameraUpdate =
-              Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
-          moveCamera(cameraUpdate);
-          result.success(null);
-          break;
-        }
-      case "camera#animate":
-        {
-          final CameraUpdate cameraUpdate =
-              Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
-          animateCamera(cameraUpdate);
-          result.success(null);
-          break;
-        }
-      case "markers#update":
-        {
-          Object markersToAdd = call.argument("markersToAdd");
-          markersController.addMarkers((List<Object>) markersToAdd);
-          Object markersToChange = call.argument("markersToChange");
-          markersController.changeMarkers((List<Object>) markersToChange);
-          Object markerIdsToRemove = call.argument("markerIdsToRemove");
-          markersController.removeMarkers((List<Object>) markerIdsToRemove);
-          result.success(null);
-          break;
-        }
-      case "polygons#update":
-        {
-          Object polygonsToAdd = call.argument("polygonsToAdd");
-          polygonsController.addPolygons((List<Object>) polygonsToAdd);
-          Object polygonsToChange = call.argument("polygonsToChange");
-          polygonsController.changePolygons((List<Object>) polygonsToChange);
-          Object polygonIdsToRemove = call.argument("polygonIdsToRemove");
-          polygonsController.removePolygons((List<Object>) polygonIdsToRemove);
-          result.success(null);
-          break;
-        }
-      case "polylines#update":
-        {
-          Object polylinesToAdd = call.argument("polylinesToAdd");
-          polylinesController.addPolylines((List<Object>) polylinesToAdd);
-          Object polylinesToChange = call.argument("polylinesToChange");
-          polylinesController.changePolylines((List<Object>) polylinesToChange);
-          Object polylineIdsToRemove = call.argument("polylineIdsToRemove");
-          polylinesController.removePolylines((List<Object>) polylineIdsToRemove);
-          result.success(null);
-          break;
-        }
-      case "circles#update":
-        {
-          Object circlesToAdd = call.argument("circlesToAdd");
-          circlesController.addCircles((List<Object>) circlesToAdd);
-          Object circlesToChange = call.argument("circlesToChange");
-          circlesController.changeCircles((List<Object>) circlesToChange);
-          Object circleIdsToRemove = call.argument("circleIdsToRemove");
-          circlesController.removeCircles((List<Object>) circleIdsToRemove);
-          result.success(null);
-          break;
-        }
-      case "map#isCompassEnabled":
-        {
-          result.success(googleMap.getUiSettings().isCompassEnabled());
-          break;
-        }
-      case "map#isMapToolbarEnabled":
-        {
-          result.success(googleMap.getUiSettings().isMapToolbarEnabled());
-          break;
-        }
-      case "map#getMinMaxZoomLevels":
-        {
-          List<Float> zoomLevels = new ArrayList<>(2);
-          zoomLevels.add(googleMap.getMinZoomLevel());
-          zoomLevels.add(googleMap.getMaxZoomLevel());
-          result.success(zoomLevels);
-          break;
-        }
-      case "map#isZoomGesturesEnabled":
-        {
-          result.success(googleMap.getUiSettings().isZoomGesturesEnabled());
-          break;
-        }
-      case "map#isScrollGesturesEnabled":
-        {
-          result.success(googleMap.getUiSettings().isScrollGesturesEnabled());
-          break;
-        }
-      case "map#isTiltGesturesEnabled":
-        {
-          result.success(googleMap.getUiSettings().isTiltGesturesEnabled());
-          break;
-        }
-      case "map#isRotateGesturesEnabled":
-        {
-          result.success(googleMap.getUiSettings().isRotateGesturesEnabled());
-          break;
-        }
-      case "map#isMyLocationButtonEnabled":
-        {
-          result.success(googleMap.getUiSettings().isMyLocationButtonEnabled());
-          break;
-        }
+        break;
+      }
+      case "camera#move": {
+        final CameraUpdate cameraUpdate =
+            Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
+        moveCamera(cameraUpdate);
+        result.success(null);
+        break;
+      }
+      case "camera#animate": {
+        final CameraUpdate cameraUpdate =
+            Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
+        animateCamera(cameraUpdate);
+        result.success(null);
+        break;
+      }
+      case "markers#update": {
+        Object markersToAdd = call.argument("markersToAdd");
+        markersController.addMarkers((List<Object>) markersToAdd);
+        Object markersToChange = call.argument("markersToChange");
+        markersController.changeMarkers((List<Object>) markersToChange);
+        Object markerIdsToRemove = call.argument("markerIdsToRemove");
+        markersController.removeMarkers((List<Object>) markerIdsToRemove);
+        result.success(null);
+        break;
+      }
+      case "polygons#update": {
+        Object polygonsToAdd = call.argument("polygonsToAdd");
+        polygonsController.addPolygons((List<Object>) polygonsToAdd);
+        Object polygonsToChange = call.argument("polygonsToChange");
+        polygonsController.changePolygons((List<Object>) polygonsToChange);
+        Object polygonIdsToRemove = call.argument("polygonIdsToRemove");
+        polygonsController.removePolygons((List<Object>) polygonIdsToRemove);
+        result.success(null);
+        break;
+      }
+      case "polylines#update": {
+        Object polylinesToAdd = call.argument("polylinesToAdd");
+        polylinesController.addPolylines((List<Object>) polylinesToAdd);
+        Object polylinesToChange = call.argument("polylinesToChange");
+        polylinesController.changePolylines((List<Object>) polylinesToChange);
+        Object polylineIdsToRemove = call.argument("polylineIdsToRemove");
+        polylinesController.removePolylines((List<Object>) polylineIdsToRemove);
+        result.success(null);
+        break;
+      }
+      case "gradientLines#update": {
+        Object gradientLinesToAdd = call.argument("gradientLinesToAdd");
+        gradientLinesController.addGradientLines((List<Object>) gradientLinesToAdd);
+        Object gradientLinesToChange = call.argument("gradientLinesToChange");
+        gradientLinesController.changeGradientLines((List<Object>) gradientLinesToChange);
+        Object gradientLineIdsToRemove = call.argument("gradientLineIdsToRemove");
+        gradientLinesController.removeGradientLines((List<Object>) gradientLineIdsToRemove);
+        result.success(null);
+        break;
+      }
+      case "circles#update": {
+        Object circlesToAdd = call.argument("circlesToAdd");
+        circlesController.addCircles((List<Object>) circlesToAdd);
+        Object circlesToChange = call.argument("circlesToChange");
+        circlesController.changeCircles((List<Object>) circlesToChange);
+        Object circleIdsToRemove = call.argument("circleIdsToRemove");
+        circlesController.removeCircles((List<Object>) circleIdsToRemove);
+        result.success(null);
+        break;
+      }
+      case "map#isCompassEnabled": {
+        result.success(googleMap.getUiSettings().isCompassEnabled());
+        break;
+      }
+      case "map#isMapToolbarEnabled": {
+        result.success(googleMap.getUiSettings().isMapToolbarEnabled());
+        break;
+      }
+      case "map#getMinMaxZoomLevels": {
+        List<Float> zoomLevels = new ArrayList<>(2);
+        zoomLevels.add(googleMap.getMinZoomLevel());
+        zoomLevels.add(googleMap.getMaxZoomLevel());
+        result.success(zoomLevels);
+        break;
+      }
+      case "map#isZoomGesturesEnabled": {
+        result.success(googleMap.getUiSettings().isZoomGesturesEnabled());
+        break;
+      }
+      case "map#isScrollGesturesEnabled": {
+        result.success(googleMap.getUiSettings().isScrollGesturesEnabled());
+        break;
+      }
+      case "map#isTiltGesturesEnabled": {
+        result.success(googleMap.getUiSettings().isTiltGesturesEnabled());
+        break;
+      }
+      case "map#isRotateGesturesEnabled": {
+        result.success(googleMap.getUiSettings().isRotateGesturesEnabled());
+        break;
+      }
+      case "map#isMyLocationButtonEnabled": {
+        result.success(googleMap.getUiSettings().isMyLocationButtonEnabled());
+        break;
+      }
       case "map#isTrafficEnabled":
         {
           result.success(googleMap.isTrafficEnabled());
@@ -624,6 +633,17 @@ final class GoogleMapController
     polylinesController.addPolylines(initialPolylines);
   }
 
+  public void setInitialGradientLines(Object initialGradientLines) {
+    this.initialGradientLines = (List<Object>) initialGradientLines;
+    if (googleMap != null) {
+      updateInitialGradientLines();
+    }
+  }
+
+  private void updateInitialGradientLines() {
+    gradientLinesController.addGradientLines(initialGradientLines);
+  }
+
   @Override
   public void setInitialCircles(Object initialCircles) {
     this.initialCircles = (List<Object>) initialCircles;
@@ -655,9 +675,9 @@ final class GoogleMapController
 
   private boolean hasLocationPermission() {
     return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-            == PackageManager.PERMISSION_GRANTED
+        == PackageManager.PERMISSION_GRANTED
         || checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
-            == PackageManager.PERMISSION_GRANTED;
+        == PackageManager.PERMISSION_GRANTED;
   }
 
   private int checkSelfPermission(String permission) {
