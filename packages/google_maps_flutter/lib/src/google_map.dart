@@ -5,6 +5,7 @@
 part of google_maps_flutter;
 
 typedef void MapCreatedCallback(GoogleMapController controller);
+typedef Future<Tile> GetTileCallback(int x, int y, int zoom);
 
 /// Callback that receives updates to the camera position.
 ///
@@ -15,37 +16,38 @@ typedef void MapCreatedCallback(GoogleMapController controller);
 typedef void CameraPositionCallback(CameraPosition position);
 
 class GoogleMap extends StatefulWidget {
-  const GoogleMap({
-    Key key,
-    @required this.initialCameraPosition,
-    this.onMapCreated,
-    this.gestureRecognizers,
-    this.compassEnabled = true,
-    this.mapToolbarEnabled = true,
-    this.cameraTargetBounds = CameraTargetBounds.unbounded,
-    this.mapType = MapType.normal,
-    this.minMaxZoomPreference = MinMaxZoomPreference.unbounded,
-    this.rotateGesturesEnabled = true,
-    this.scrollGesturesEnabled = true,
-    this.zoomGesturesEnabled = true,
-    this.tiltGesturesEnabled = true,
-    this.myLocationEnabled = false,
-    this.myLocationButtonEnabled = true,
+  const GoogleMap(
+      {Key key,
+      @required this.initialCameraPosition,
+      this.onMapCreated,
+      this.gestureRecognizers,
+      this.compassEnabled = true,
+      this.mapToolbarEnabled = true,
+      this.cameraTargetBounds = CameraTargetBounds.unbounded,
+      this.mapType = MapType.normal,
+      this.minMaxZoomPreference = MinMaxZoomPreference.unbounded,
+      this.rotateGesturesEnabled = true,
+      this.scrollGesturesEnabled = true,
+      this.zoomGesturesEnabled = true,
+      this.tiltGesturesEnabled = true,
+      this.myLocationEnabled = false,
+      this.myLocationButtonEnabled = true,
 
-    /// If no padding is specified default padding will be 0.
-    this.padding = const EdgeInsets.all(0),
-    this.indoorViewEnabled = false,
-    this.trafficEnabled = false,
-    this.markers,
-    this.polygons,
-    this.polylines,
-    this.circles,
-    this.onCameraMoveStarted,
-    this.onCameraMove,
-    this.onCameraIdle,
-    this.onTap,
-    this.onLongPress,
-  })  : assert(initialCameraPosition != null),
+      /// If no padding is specified default padding will be 0.
+      this.padding = const EdgeInsets.all(0),
+      this.indoorViewEnabled = false,
+      this.trafficEnabled = false,
+      this.markers,
+      this.polygons,
+      this.polylines,
+      this.circles,
+      this.onCameraMoveStarted,
+      this.onCameraMove,
+      this.onCameraIdle,
+      this.onTap,
+      this.onLongPress,
+      this.gradientLines})
+      : assert(initialCameraPosition != null),
         super(key: key);
 
   final MapCreatedCallback onMapCreated;
@@ -93,6 +95,9 @@ class GoogleMap extends StatefulWidget {
 
   /// Polylines to be placed on the map.
   final Set<Polyline> polylines;
+
+  /// Gradient Polylines to be placed on map.
+  final Set<GradientLine> gradientLines;
 
   /// Circles to be placed on the map.
   final Set<Circle> circles;
@@ -190,6 +195,8 @@ class _GoogleMapState extends State<GoogleMap> {
   Map<MarkerId, Marker> _markers = <MarkerId, Marker>{};
   Map<PolygonId, Polygon> _polygons = <PolygonId, Polygon>{};
   Map<PolylineId, Polyline> _polylines = <PolylineId, Polyline>{};
+  Map<GradientLineId, GradientLine> _gradientLines =
+      <GradientLineId, GradientLine>{};
   Map<CircleId, Circle> _circles = <CircleId, Circle>{};
   _GoogleMapOptions _googleMapOptions;
 
@@ -201,6 +208,7 @@ class _GoogleMapState extends State<GoogleMap> {
       'markersToAdd': _serializeMarkerSet(widget.markers),
       'polygonsToAdd': _serializePolygonSet(widget.polygons),
       'polylinesToAdd': _serializePolylineSet(widget.polylines),
+      'gradientLinesToAdd': _serializeGradientLineSet(widget.gradientLines),
       'circlesToAdd': _serializeCircleSet(widget.circles),
     };
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -232,6 +240,7 @@ class _GoogleMapState extends State<GoogleMap> {
     _markers = _keyByMarkerId(widget.markers);
     _polygons = _keyByPolygonId(widget.polygons);
     _polylines = _keyByPolylineId(widget.polylines);
+    _gradientLines = _keyByGradientLineId(widget.gradientLines);
     _circles = _keyByCircleId(widget.circles);
   }
 
@@ -242,7 +251,15 @@ class _GoogleMapState extends State<GoogleMap> {
     _updateMarkers();
     _updatePolygons();
     _updatePolylines();
+    _updateGradientLines();
     _updateCircles();
+  }
+
+  void _updateGradientLines() async {
+    final GoogleMapController controller = await _controller.future;
+    controller._updateGradientLines(_GradientLineUpdates.from(
+        _gradientLines.values.toSet(), widget.gradientLines));
+    _gradientLines = _keyByGradientLineId(widget.gradientLines);
   }
 
   void _updateOptions() async {

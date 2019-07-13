@@ -436,6 +436,33 @@ class Convert {
     }
   }
 
+  static GradientLine makeGradientLine(Object o) {
+    final Map<?, ?> data = toMap(o);
+
+    return new GradientLine(
+        toString(data.get("id")),
+        toColorPoints(data.get("points")),
+        toInt(data.get("width"))
+    );
+  }
+
+  private static List<ColorPoint> toColorPoints(Object o) {
+    final List<?> data = toList(o);
+    final List<ColorPoint> colorPoints = new ArrayList<>(data.size());
+
+    for (Object ob : data) {
+      final Map<?, ?> colorPoint = toMap(ob);
+      List<?> location = toList(colorPoint.get("location"));
+      colorPoints.add(
+              new ColorPoint(
+                      new LatLng(toDouble(location.get(0)), toDouble(location.get(1))), toInt(colorPoint.get("color"))
+              )
+      );
+
+    }
+    return colorPoints;
+  }
+
   static String interpretPolylineOptions(Object o, PolylineOptionsSink sink) {
     final Map<?, ?> data = toMap(o);
     final Object consumeTapEvents = data.get("consumeTapEvents");
