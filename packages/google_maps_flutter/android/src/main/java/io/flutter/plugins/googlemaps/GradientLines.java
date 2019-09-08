@@ -18,10 +18,6 @@ public class GradientLines {
     return gradientLineIdToGradientLine.values();
   }
 
-  public GradientLine getGradientLineById(String id) {
-    return gradientLineIdToGradientLine.get(id);
-  }
-
   public void addGradientLinesFromObjects(List<Object> gradientLinesToAdd) {
     if (gradientLinesToAdd != null) {
       for (Object gradientLineToAdd : gradientLinesToAdd) {

@@ -91,6 +91,7 @@ final class GoogleMapController
   private final PolygonsController polygonsController;
   private final PolylinesController polylinesController;
   private final GradientLinesController gradientLinesController;
+  private final GradientLinesGroundOverlayController gradientLinesGroundOverlayController;
   private final CirclesController circlesController;
   private List<Object> initialMarkers;
   private List<Object> initialPolygons;
@@ -118,6 +119,7 @@ final class GoogleMapController
     this.polygonsController = new PolygonsController(methodChannel);
     this.polylinesController = new PolylinesController(methodChannel, density);
     this.gradientLinesController = new GradientLinesController(density);
+    this.gradientLinesGroundOverlayController = new GradientLinesGroundOverlayController(density);
     this.circlesController = new CirclesController(methodChannel);
   }
 
@@ -204,6 +206,7 @@ final class GoogleMapController
     circlesController.setGoogleMap(googleMap);
     TileOverlay tileOverlay = googleMap.addTileOverlay(new TileOverlayOptions().tileProvider(gradientLinesController));
     gradientLinesController.setTileOverlay(tileOverlay);
+    gradientLinesGroundOverlayController.setGoogleMap(googleMap);
     updateInitialMarkers();
     updateInitialPolygons();
     updateInitialPolylines();
@@ -284,12 +287,17 @@ final class GoogleMapController
         break;
       }
       case "gradientLines#update": {
-        Object gradientLinesToAdd = call.argument("gradientLinesToAdd");
-        gradientLinesController.addGradientLines((List<Object>) gradientLinesToAdd);
-        Object gradientLinesToChange = call.argument("gradientLinesToChange");
-        gradientLinesController.changeGradientLines((List<Object>) gradientLinesToChange);
-        Object gradientLineIdsToRemove = call.argument("gradientLineIdsToRemove");
-        gradientLinesController.removeGradientLines((List<Object>) gradientLineIdsToRemove);
+        List<Object> gradientLinesToChange = (List<Object>) call.argument("gradientLinesToChange");
+        gradientLinesToChange.addAll((List<Object>) call.argument("gradientLinesToAdd"));
+
+        gradientLinesGroundOverlayController.showGradientLines(Convert.makeGradientLines(gradientLinesToChange));
+
+//        Object gradientLinesToAdd = call.argument("gradientLinesToAdd");
+//        gradientLinesController.addGradientLines((List<Object>) gradientLinesToAdd);
+//        Object gradientLinesToChange = call.argument("gradientLinesToChange");
+//        gradientLinesController.changeGradientLines((List<Object>) gradientLinesToChange);
+//        Object gradientLineIdsToRemove = call.argument("gradientLineIdsToRemove");
+//        gradientLinesController.removeGradientLines((List<Object>) gradientLineIdsToRemove);
         result.success(null);
         break;
       }
@@ -641,7 +649,7 @@ final class GoogleMapController
   }
 
   private void updateInitialGradientLines() {
-    gradientLinesController.addGradientLines(initialGradientLines);
+    gradientLinesGroundOverlayController.showGradientLines(Convert.makeGradientLines(initialGradientLines));
   }
 
   @Override

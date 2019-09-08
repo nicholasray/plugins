@@ -12,9 +12,6 @@ class _GradientLineUpdates {
       current = Set<GradientLine>.identity();
     }
 
-    print("previous ${previous.first.points.length.toString()}");
-    print("current ${current.first.points.length.toString()}");
-
     final Map<GradientLineId, GradientLine> previousGradientLines =
         _keyByGradientLineId(previous);
     final Map<GradientLineId, GradientLine> currentGradientLines =

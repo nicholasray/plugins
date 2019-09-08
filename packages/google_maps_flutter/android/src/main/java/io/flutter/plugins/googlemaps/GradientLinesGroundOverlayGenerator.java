@@ -1,32 +1,30 @@
 package io.flutter.plugins.googlemaps;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.Point;
-import android.graphics.PorterDuff;
 import android.graphics.Shader;
+import android.util.Log;
 
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.GroundOverlay;
-import com.google.android.gms.maps.model.GroundOverlayOptions;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.Tile;
+import com.google.android.gms.maps.model.LatLngBounds;
 
-import java.io.ByteArrayOutputStream;
+import java.util.Collection;
 import java.util.List;
 
-public class GradientLinesTileGenerator {
+public class GradientLinesGroundOverlayGenerator {
   private final int tileSize;
   private Paint paint;
   private Canvas canvas;
   private Bitmap bitmap;
   private Path path;
 
-  public GradientLinesTileGenerator(float density) {
+  public GradientLinesGroundOverlayGenerator(float density) {
     this.tileSize = (int) (256 * density);
     this.paint = new Paint();
     paint.setStyle(Paint.Style.STROKE);
@@ -34,21 +32,40 @@ public class GradientLinesTileGenerator {
     paint.setStrokeWidth(12);
     paint.setAntiAlias(true);
     this.path = new Path();
-    this.bitmap = Bitmap.createBitmap(
-        tileSize,
-        tileSize,
-        Bitmap.Config.ARGB_8888
-    );
-    this.canvas = new Canvas(bitmap);
   }
 
-  public synchronized Tile generateTile(GradientLines gradientLines, int x, int y, int zoom) {
-    boolean didDraw = false;
-    int scale = 1 << zoom;
-    int tileLeft = tileSize * x;
-    int tileTop = tileSize * y;
+  public LatLngBounds getBounds(Collection<GradientLine> gradientLines) {
+    LatLngBounds.Builder builder = new LatLngBounds.Builder();
+    for (GradientLine gradientLine : gradientLines) {
+      for (ColorPoint colorPoint : gradientLine.getPoints() ) {
+        builder.include(colorPoint.getLocation());
+      }
+    }
+    return builder.build();
+  }
 
-    for (GradientLine gradientLine : gradientLines.getGradientLines() ) {
+  public Bitmap generateBitmap(Collection<GradientLine> gradientLines, LatLngBounds bounds, int zoom) {
+    int scale = 1 << 10;
+
+
+    Point sw = project(bounds.southwest, scale, tileSize);
+    Point ne = project(bounds.northeast, scale, tileSize);
+
+
+    Log.d("BOUNDS IS ", bounds.toString());
+    Log.d("SW IS ", sw.toString());
+    Log.d("NE IS ", ne.toString());
+
+    Bitmap bitmap = Bitmap.createBitmap(
+        ne.x - sw.x,
+        sw.y - ne.y,
+        Bitmap.Config.ARGB_8888
+    );
+    Canvas canvas = new Canvas(bitmap);
+
+    boolean didDraw = false;
+
+    for (GradientLine gradientLine : gradientLines ) {
       final List<ColorPoint> points = gradientLine.getPoints();
 
       for (int index = 0; index < points.size() - 1; index++) {
@@ -58,10 +75,10 @@ public class GradientLinesTileGenerator {
         Point currentPixelCoordinate = project(currentPoint.getLocation(), scale, tileSize);
         Point nextPixelCoordinate = project(nextPoint.getLocation(), scale, tileSize);
 
-        int currentX = currentPixelCoordinate.x - tileLeft;
-        int currentY = currentPixelCoordinate.y - tileTop;
-        int nextX = nextPixelCoordinate.x - tileLeft;
-        int nextY = nextPixelCoordinate.y - tileTop;
+        int currentX = currentPixelCoordinate.x - sw.x;
+        int currentY = currentPixelCoordinate.y - ne.y;
+        int nextX = nextPixelCoordinate.x - sw.x;
+        int nextY = nextPixelCoordinate.y - ne.y;
 
         path.rewind();
         path.moveTo(currentX, currentY);
@@ -86,16 +103,7 @@ public class GradientLinesTileGenerator {
       return null;
     }
 
-    final ByteArrayOutputStream stream = new ByteArrayOutputStream();
-    // still not sure if compression here is helpful or hurts performance
-    bitmap.compress(Bitmap.CompressFormat.WEBP, 0, stream);
-
-    Tile tile = new Tile(tileSize, tileSize, stream.toByteArray());
-
-    // reset canvas
-    canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-
-    return tile;
+    return bitmap;
   }
 
   /**

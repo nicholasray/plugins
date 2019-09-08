@@ -436,6 +436,15 @@ class Convert {
     }
   }
 
+  static List<GradientLine> makeGradientLines(List<Object> objects ) {
+    List<GradientLine> gradientLines = new ArrayList<>();
+    for ( Object object : objects ) {
+      gradientLines.add(makeGradientLine(object));
+    }
+
+    return gradientLines;
+  }
+
   static GradientLine makeGradientLine(Object o) {
     final Map<?, ?> data = toMap(o);
 
